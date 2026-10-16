@@ -17,10 +17,11 @@ import {
   Check, 
   Plus,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  Map as MapIcon
 } from "lucide-react";
 import { resolveRailwayPlace, POPULAR_RAILWAY_STATIONS } from "../utils/stationResolver";
-import { CalcState, JourneyGroup } from "../lib/calc";
+import { CalcState, JourneyGroup, calcContingencyRowAmount } from "../lib/calc";
 
 const GOOGLE_MAPS_API_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyAGojLFvYL8PY_im6ZsFjy7NBqSfWbVMC4";
 
@@ -229,6 +230,10 @@ export function GoogleMapTab({ s, patch, patchGroup }: Props) {
   const addAsContingency = () => {
     if (!routeDetails || routeDetails.formattedDistanceKm <= 0) return;
     const items = s.contingency ?? [];
+    const km = routeDetails.formattedDistanceKm;
+    const rate = 15;
+    const isReturn = false;
+    const amt = calcContingencyRowAmount({ kms: km, rate, isReturn });
     patch({
       contingency: [
         ...items,
@@ -237,20 +242,20 @@ export function GoogleMapTab({ s, patch, patchGroup }: Props) {
           date: s.claimMonth ? `${s.claimMonth}-01` : "",
           from: fromLoc,
           to: toLoc,
-          isReturn: false,
-          kms: routeDetails.formattedDistanceKm,
-          rate: 15,
-          amount: 0,
+          isReturn,
+          kms: km,
+          rate,
+          amount: amt,
         },
       ],
     });
-    setAppliedMsg(`Added ${routeDetails.formattedDistanceKm} KMs to Contingency Bill!`);
+    setAppliedMsg(`Added ${routeDetails.formattedDistanceKm} KMs (₹${amt.toFixed(2)}) to Contingency Bill!`);
     setTimeout(() => setAppliedMsg(null), 3000);
   };
 
   return (
     <div className="rounded-2xl border border-line bg-coal p-4 md:p-5 space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2.5">
           <div className="p-2 rounded-xl bg-amber/15 border border-amber/30 text-amber">
             <Navigation className="size-4" />
@@ -264,9 +269,30 @@ export function GoogleMapTab({ s, patch, patchGroup }: Props) {
             </p>
           </div>
         </div>
-        <span className="font-mono text-[9px] font-bold px-2 py-1 rounded bg-leaf/15 text-leaf border border-leaf/30 uppercase tracking-widest">
-          LIVE API
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[9px] font-bold px-2 py-1 rounded bg-leaf/15 text-leaf border border-leaf/30 uppercase tracking-widest">
+            LIVE API
+          </span>
+          <a
+            href={
+              fromLoc.trim() && toLoc.trim()
+                ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
+                    resolveRailwayPlace(fromLoc)
+                  )}&destination=${encodeURIComponent(
+                    resolveRailwayPlace(toLoc)
+                  )}&travelmode=${travelMode === "TRANSIT" ? "transit" : travelMode === "WALKING" ? "walking" : travelMode === "TWO_WHEELER" ? "two_wheeler" : "driving"}`
+                : "https://www.google.com/maps"
+            }
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber text-ink font-mono text-[10px] font-bold uppercase tracking-wider transition-all hover:bg-cream active:scale-95 shadow-[0_0_12px_-2px_rgba(242,169,59,0.3)] cursor-pointer"
+            title="Open route in Google Maps in a new browser tab"
+          >
+            <MapIcon className="size-3.5" />
+            <span>Map</span>
+            <ExternalLink className="size-3" />
+          </a>
+        </div>
       </div>
 
       {/* Input controls */}

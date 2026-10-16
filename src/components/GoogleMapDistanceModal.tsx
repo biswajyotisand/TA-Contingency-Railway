@@ -19,7 +19,9 @@ import {
   Bike, 
   Footprints, 
   Search,
-  RotateCcw
+  RotateCcw,
+  ExternalLink,
+  Map as MapIcon
 } from "lucide-react";
 import { resolveRailwayPlace, POPULAR_RAILWAY_STATIONS } from "../utils/stationResolver";
 
@@ -237,12 +239,36 @@ export function GoogleMapDistanceModal({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-mute hover:text-cream hover:bg-coal-3 border border-transparent hover:border-line transition-all cursor-pointer"
-          >
-            <X className="size-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[9px] font-bold px-2 py-1 rounded bg-leaf/15 text-leaf border border-leaf/30 uppercase tracking-widest">
+              LIVE API
+            </span>
+            <a
+              href={
+                fromLoc.trim() && toLoc.trim()
+                  ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
+                      resolveRailwayPlace(fromLoc)
+                    )}&destination=${encodeURIComponent(
+                      resolveRailwayPlace(toLoc)
+                    )}&travelmode=${travelMode === "TRANSIT" ? "transit" : travelMode === "WALKING" ? "walking" : travelMode === "TWO_WHEELER" ? "two_wheeler" : "driving"}`
+                  : "https://www.google.com/maps"
+              }
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber text-ink hover:bg-cream font-mono text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer shadow-[0_0_12px_-2px_rgba(242,169,59,0.3)] active:scale-95"
+              title="Open Google Maps in a new browser tab"
+            >
+              <MapIcon className="size-3.5" />
+              <span>Map</span>
+              <ExternalLink className="size-3" />
+            </a>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-mute hover:text-cream hover:bg-coal-3 border border-transparent hover:border-line transition-all cursor-pointer"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
         </div>
 
         {/* Input Bar */}

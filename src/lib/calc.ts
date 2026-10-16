@@ -31,6 +31,14 @@ export interface ContingencyRow {
   amount: number; // computed: kms * rate * (isReturn ? 2 : 1)
 }
 
+/** Automatically calculate a contingency row's monetary amount */
+export function calcContingencyRowAmount(r: Partial<ContingencyRow>): number {
+  const kms = Number(r.kms) || 0;
+  const rate = Number(r.rate) || 0;
+  const multiplier = r.isReturn ? 2 : 1;
+  return Math.round(kms * rate * multiplier * 100) / 100;
+}
+
 /** Auto-compose the particulars string for the Contingent Bill print */
 export function particularsText(r: ContingencyRow): string {
   const parts: string[] = [];
@@ -211,11 +219,16 @@ export interface Computed {
 export function compute(s: CalcState): Computed {
   const band = bandOf(s.profile.level);
   const daRate = s.daRateOverride ?? band.da;
-  const daTotal = round2(s.daEntries.reduce((a, e) => a + e.amount, 0));
-  const allRows = s.groups.flatMap((g) => g.rows);
-  const totalKms = allRows.reduce((a, r) => a + Math.max(0, r.kms), 0);
-  const fareTotal = round2(allRows.filter((r) => !r.onPass).reduce((a, r) => a + Math.max(0, r.fare), 0));
-  const contingTotal = round2((s.contingency ?? []).reduce((a, i) => a + Math.max(0, i.amount), 0));
+  const daTotal = round2((s.daEntries ?? []).reduce((a, e) => a + (Number(e.amount) || 0), 0));
+  const allRows = (s.groups ?? []).flatMap((g) => g.rows ?? []);
+  const totalKms = allRows.reduce((a, r) => a + Math.max(0, Number(r.kms) || 0), 0);
+  const fareTotal = round2(allRows.filter((r) => !r.onPass).reduce((a, r) => a + Math.max(0, Number(r.fare) || 0), 0));
+  const contingTotal = round2(
+    (s.contingency ?? []).reduce((a, i) => {
+      const amt = Number(i.amount) > 0 ? Number(i.amount) : calcContingencyRowAmount(i);
+      return a + Math.max(0, amt);
+    }, 0)
+  );
   const taGrand = round2(daTotal + fareTotal);
   const grand = round2(daTotal + fareTotal + contingTotal);
   return { daRate, daTotal, totalKms, fareTotal, contingTotal, taGrand, grand };

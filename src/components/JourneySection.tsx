@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { MoveRight, Plus, Ticket, Trash2, Navigation, MapPin } from "lucide-react";
-import { CalcState, JourneyGroup, JourneyRow } from "../lib/calc";
+import { MoveRight, Plus, Ticket, Trash2, Navigation } from "lucide-react";
+import { CalcState, JourneyGroup, JourneyRow, inr } from "../lib/calc";
 import { IconBtn, Label, MoneyInput, SectionHead } from "./primitives";
 import { GoogleMapDistanceModal } from "./GoogleMapDistanceModal";
 import { cn } from "../utils/cn";
@@ -121,19 +121,41 @@ export function JourneySection({ s, patch, patchGroup }: Props) {
   // Modal state for Google Maps distance lookup
   const [mapTargetRow, setMapTargetRow] = useState<{ gid: string; row: JourneyRow } | null>(null);
 
+  const allRows = (s.groups ?? []).flatMap((g) => g.rows ?? []);
+  const totalKms = allRows.reduce((a, r) => a + Math.max(0, Number(r.kms) || 0), 0);
+  const fareTotal = allRows.filter((r) => !r.onPass).reduce((a, r) => a + Math.max(0, Number(r.fare) || 0), 0);
+  const daTotal = (s.daEntries ?? []).reduce((a, e) => a + (Number(e.amount) || 0), 0);
+  const journeyClaimTotal = Math.round((daTotal + fareTotal) * 100) / 100;
+
   const addGroup = () => patch({ groups: [...s.groups, { id: uid(), object: "", rows: [] }] });
   const delGroup = (gid: string) => patch({ groups: s.groups.filter((g) => g.id !== gid) });
   const patchRow = (gid: string, rid: string, p: Partial<JourneyRow>) =>
     patchGroup(gid, {
       rows: s.groups.find((g) => g.id === gid)!.rows.map((r) => (r.id === rid ? { ...r, ...p } : r)),
     });
-  const addRow = (gid: string) =>
+  const addRow = (gid: string) => {
+    const grp = s.groups.find((g) => g.id === gid);
+    const existingRows = grp?.rows ?? [];
+    const lastRow = existingRows[existingRows.length - 1];
+    const defaultDate = lastRow?.date || (s.claimMonth ? `${s.claimMonth}-01` : "");
     patchGroup(gid, {
       rows: [
-        ...(s.groups.find((g) => g.id === gid)?.rows ?? []),
-        { id: uid(), date: "", trainNo: "", depTime: "", arrTime: "", from: "", to: "", kms: 0, onPass: true, fare: 0 },
+        ...existingRows,
+        {
+          id: uid(),
+          date: defaultDate,
+          trainNo: lastRow?.trainNo || "",
+          depTime: "",
+          arrTime: "",
+          from: lastRow?.to || s.distHQ || "",
+          to: "",
+          kms: 0,
+          onPass: true,
+          fare: 0,
+        },
       ],
     });
+  };
   const delRow = (gid: string, rid: string) =>
     patchGroup(gid, { rows: s.groups.find((g) => g.id === gid)!.rows.filter((r) => r.id !== rid) });
 
@@ -239,6 +261,19 @@ export function JourneySection({ s, patch, patchGroup }: Props) {
           Add a journey group to get started
         </p>
       )}
+
+      {/* Live Auto-Calculated Journey Total Summary */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3 font-mono bg-ink/30 px-3 py-2 rounded-xl">
+        <div className="text-[10px] uppercase tracking-[0.16em] text-mute flex flex-wrap items-center gap-2">
+          <span>Distance: <b className="text-cream">{totalKms} KMs</b></span>
+          <span>• Fare: <b className="text-cream">{inr(fareTotal)}</b></span>
+          <span>• DA: <b className="text-cream">{inr(daTotal)}</b></span>
+        </div>
+        <div className="flex items-center gap-2 ml-auto">
+          <span className="text-[10px] uppercase tracking-wider text-mute">Journey Total Sum:</span>
+          <span className="text-[16px] font-bold text-amber">{inr(journeyClaimTotal)}</span>
+        </div>
+      </div>
 
       {/* Google Map Distance Modal */}
       {mapTargetRow && (

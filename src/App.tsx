@@ -80,7 +80,7 @@ function buildPrintTitle(s: CalcState, type: "journey" | "contingency"): string 
 }
 
 // demo & empty state
-function demoState(): CalcState {
+function demoState(registeredName?: string): CalcState {
   const band = bandOf("5");
   const rate = band.da;
   const groups: JourneyGroup[] = [
@@ -205,7 +205,7 @@ function demoState(): CalcState {
     claimNo: "",
     billDate: todayISO(),
     profile: {
-      name: "Sri Biswajyoti Roy Sarkar",
+      name: registeredName || "Sri Biswajyoti Roy Sarkar",
       desig: "Sr. Clerk-Cum-Typist",
       dept: "Personnel",
       pay: "Rs. 29200",
@@ -222,7 +222,7 @@ function demoState(): CalcState {
   };
 }
 
-function emptyState(): CalcState {
+function emptyState(registeredName?: string): CalcState {
   return {
     railway: "South Eastern Railway",
     distHQ: "",
@@ -230,7 +230,7 @@ function emptyState(): CalcState {
     claimNo: "",
     billDate: todayISO(),
     profile: {
-      name: "",
+      name: registeredName || "",
       desig: "",
       dept: "",
       pay: "",
@@ -292,6 +292,15 @@ interface Desk {
 const STORE_KEY = "ta-junction-desk-v7";
 
 function loadDesk(): Desk {
+  const sessionUser = (() => {
+    try {
+      const saved = localStorage.getItem("ta-junction-session");
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  })();
+
   try {
     const raw = localStorage.getItem(STORE_KEY);
     if (raw) {
@@ -299,13 +308,19 @@ function loadDesk(): Desk {
       if (s?.bills?.length)
         return {
           activeId: s.activeId,
-          bills: s.bills.map((b: BillFile) => ({ ...b, state: normalize(b.state) })),
+          bills: s.bills.map((b: BillFile) => {
+            const st = normalize(b.state);
+            if (sessionUser?.name) {
+              st.profile.name = sessionUser.name;
+            }
+            return { ...b, state: st, title: makeTitle(st) };
+          }),
         };
     }
   } catch {
     // ignore
   }
-  const st = demoState();
+  const st = demoState(sessionUser?.name);
   return { activeId: "b1", bills: [{ id: "b1", title: makeTitle(st), state: st }] };
 }
 
@@ -511,10 +526,14 @@ export default function App() {
           prev.bills.forEach((b) => mergedMap.set(b.id, b));
           remoteBills.forEach((rb: any) => {
             if (rb.id && rb.state) {
+              const norm = normalize(rb.state);
+              if (currentUser?.name) {
+                norm.profile.name = currentUser.name;
+              }
               mergedMap.set(rb.id, {
                 id: rb.id,
-                title: rb.title || makeTitle(rb.state),
-                state: normalize(rb.state),
+                title: rb.title || makeTitle(norm),
+                state: norm,
               });
             }
           });
@@ -545,9 +564,32 @@ export default function App() {
     return () => clearTimeout(timeout);
   }, [bill, currentUser?.hrmsId]);
 
+  // Synchronize employee name across bills whenever registered user is logged in
+  useEffect(() => {
+    if (!currentUser?.name) return;
+    setDesk((prev) => ({
+      ...prev,
+      bills: prev.bills.map((b) => {
+        if (b.state.profile.name === currentUser.name) return b;
+        const ns = {
+          ...b.state,
+          profile: {
+            ...b.state.profile,
+            name: currentUser.name,
+          },
+        };
+        return {
+          ...b,
+          state: ns,
+          title: makeTitle(ns),
+        };
+      }),
+    }));
+  }, [currentUser?.name]);
+
   const newBill = () => {
     const id = uid();
-    const st = emptyState();
+    const st = emptyState(currentUser?.name);
     setDesk((d) => ({ activeId: id, bills: [...d.bills, { id, title: makeTitle(st), state: st }] }));
   };
 
@@ -637,16 +679,7 @@ export default function App() {
                 </div>
 
                 <div className="flex items-center gap-2.5 shrink-0">
-                  {/* Cloud / Vercel Deploy Button */}
-                  <button
-                    onClick={() => setShowDeployModal(true)}
-                    className="inline-flex items-center gap-2 rounded-xl bg-amber/15 border border-amber/30 px-3 py-2 font-mono text-[9.5px] font-bold uppercase tracking-wider text-amber hover:bg-amber/25 transition-all active:scale-95 cursor-pointer shadow-[0_0_15px_-3px_rgba(242,169,59,0.2)]"
-                    title="Vercel Deployment & Database API settings"
-                  >
-                    <Cloud className="size-3.5" />
-                    <span className="hidden sm:inline">Deploy to Vercel</span>
-                    <span className="size-1.5 rounded-full bg-leaf animate-pulse" />
-                  </button>
+                  {/* Firebase Project Badge */}
 
                   {/* Firebase Project Badge */}
                   <div className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-amber/30 bg-amber/10 font-mono text-[9.5px] text-amber">
@@ -735,24 +768,17 @@ export default function App() {
                     {desk.bills.length} BILL{desk.bills.length > 1 ? "S" : ""} ON DESK • AUTOSAVED
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowDeployModal(true)}
-                  className="font-mono text-[10px] text-amber/80 hover:text-amber underline decoration-dashed transition-colors cursor-pointer"
-                >
-                  [Vercel & DB Config]
-                </button>
               </div>
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => updateActive(() => demoState())}
+                  onClick={() => updateActive(() => demoState(currentUser?.name))}
                   className="inline-flex items-center gap-2 rounded-xl border border-line bg-coal px-3.5 py-2 font-mono text-[10.5px] font-bold uppercase tracking-wider text-mute transition-all hover:text-cream hover:border-mute/40 active:scale-95 cursor-pointer"
                 >
                   <Sparkles className="size-3.5" /> Demo
                 </button>
                 <button
-                  onClick={() => updateActive(() => emptyState())}
+                  onClick={() => updateActive(() => emptyState(currentUser?.name))}
                   className="inline-flex items-center gap-2 rounded-xl border border-line bg-coal px-3.5 py-2 font-mono text-[10.5px] font-bold uppercase tracking-wider text-mute transition-all hover:text-signal hover:border-signal/50 active:scale-95 cursor-pointer"
                 >
                   <RotateCcw className="size-3.5" /> Reset
@@ -773,7 +799,12 @@ export default function App() {
               {/* LEFT — form panels */}
               <div className="lg:col-span-5 space-y-5">
                 <FadeIn>
-                  <EmployeeSection s={state} patch={patch} patchProfile={patchProfile} />
+                  <EmployeeSection
+                    s={state}
+                    patch={patch}
+                    patchProfile={patchProfile}
+                    registeredName={currentUser?.name}
+                  />
                 </FadeIn>
 
                 <FadeIn delay={0.04}>
@@ -916,13 +947,10 @@ export default function App() {
                     Railway Board circulars and your establishment section before submitting TA claims.
                   </p>
                 </div>
-                <button
-                  onClick={() => setShowDeployModal(true)}
-                  className="font-mono text-[10px] text-amber flex items-center gap-1.5 hover:underline"
-                >
-                  <Cloud className="size-3" />
-                  Vercel Cloud Deployment Info
-                </button>
+                <div className="font-mono text-[9px] text-mute flex items-center gap-1.5">
+                  <span className="size-1.5 rounded-full bg-leaf" />
+                  <span>Cloud Database Active</span>
+                </div>
               </div>
             </div>
             <div className="hazard h-1.5" />

@@ -6,6 +6,7 @@ interface Props {
   s: CalcState;
   patch: (p: Partial<CalcState>) => void;
   patchProfile: (p: Partial<CalcState["profile"]>) => void;
+  registeredName?: string;
 }
 
 const RAILWAYS = [
@@ -26,7 +27,8 @@ const RAILWAYS = [
   "West Central Railway",
 ];
 
-export function EmployeeSection({ s, patch, patchProfile }: Props) {
+export function EmployeeSection({ s, patch, patchProfile, registeredName }: Props) {
+  const displayName = registeredName || s.profile.name;
   return (
     <section className="rounded-2xl border border-line bg-coal p-4 md:p-5 space-y-4">
       <SectionHead no="01" title="Bill header" hint="railway - employee - month" lamp="#35B26B" />
@@ -79,12 +81,18 @@ export function EmployeeSection({ s, patch, patchProfile }: Props) {
       {/* Name, Designation, Department */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
-          <Label>Employee name</Label>
+          <div className="flex items-center justify-between mb-1">
+            <Label className="mb-0">Employee name</Label>
+            <span className="font-mono text-[8.5px] font-bold text-leaf uppercase tracking-wider bg-leaf/10 border border-leaf/30 px-1.5 py-0.5 rounded">
+              As per Registration
+            </span>
+          </div>
           <input
-            className="field"
+            className="field font-semibold text-cream bg-ink/60 border-amber/30 cursor-not-allowed"
             placeholder="Sri / Smt. Full Name"
-            value={s.profile.name}
-            onChange={(e) => patchProfile({ name: e.target.value })}
+            value={displayName}
+            readOnly
+            title="Employee Name is set as per employee registration name"
           />
         </div>
         <div>

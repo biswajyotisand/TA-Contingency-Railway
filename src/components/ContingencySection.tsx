@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Plus, Trash2, Navigation } from "lucide-react";
-import { CalcState, ContingencyRow, inr, particularsText } from "../lib/calc";
+import { CalcState, ContingencyRow, inr, calcContingencyRowAmount } from "../lib/calc";
 import { IconBtn, SectionHead } from "./primitives";
 import { GoogleMapDistanceModal } from "./GoogleMapDistanceModal";
 
@@ -23,7 +23,8 @@ function RowCard({
   onDel: () => void;
   onOpenMap: () => void;
 }) {
-  const preview = particularsText(item);
+  const rowAmount = calcContingencyRowAmount(item);
+
   return (
     <motion.div
       layout
@@ -68,7 +69,13 @@ function RowCard({
             <select
               className="field py-1 px-2 w-16 text-center font-bold cursor-pointer"
               value={item.isReturn ? "yes" : "no"}
-              onChange={(e) => onSet({ isReturn: e.target.value === "yes" })}
+              onChange={(e) => {
+                const nextReturn = e.target.value === "yes";
+                onSet({
+                  isReturn: nextReturn,
+                  amount: calcContingencyRowAmount({ ...item, isReturn: nextReturn }),
+                });
+              }}
             >
               <option value="no">No</option>
               <option value="yes">Yes</option>
@@ -76,7 +83,7 @@ function RowCard({
           </div>
         </div>
 
-        {/* KMs + Google Map trigger + Rate */}
+        {/* KMs + Google Map trigger + Rate + Row Amount */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-mute w-10 shrink-0">KMs</span>
           <input
@@ -86,14 +93,20 @@ function RowCard({
             className="field py-1 w-20 text-right font-bold text-cream"
             placeholder="0"
             value={item.kms || ""}
-            onChange={(e) => onSet({ kms: Math.max(0, parseFloat(e.target.value) || 0) })}
+            onChange={(e) => {
+              const nextKm = Math.max(0, parseFloat(e.target.value) || 0);
+              onSet({
+                kms: nextKm,
+                amount: calcContingencyRowAmount({ ...item, kms: nextKm }),
+              });
+            }}
           />
 
           {/* Google Map KM Button */}
           <button
             type="button"
             onClick={onOpenMap}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber/15 border border-amber/30 text-amber hover:bg-amber/25 font-mono text-[9.5px] font-bold uppercase transition-all cursor-pointer shadow-[0_0_10px_-2px_rgba(242,169,59,0.2)]"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber/15 border border-amber/30 text-amber hover:bg-amber/25 font-mono text-[9.5px] font-bold uppercase transition-all cursor-pointer shadow-[0_0_10px_-2px_rgba(242,169,59,0.2)] active:scale-95"
             title="Calculate distance using Google Maps"
           >
             <Navigation className="size-3" />
@@ -105,17 +118,23 @@ function RowCard({
             type="number"
             min={0}
             step={0.5}
-            className="field py-1 w-20 text-right"
+            className="field py-1 w-20 text-right font-mono"
             placeholder="Rate"
             value={item.rate || ""}
-            onChange={(e) => onSet({ rate: Math.max(0, parseFloat(e.target.value) || 0) })}
+            onChange={(e) => {
+              const nextRate = Math.max(0, parseFloat(e.target.value) || 0);
+              onSet({
+                rate: nextRate,
+                amount: calcContingencyRowAmount({ ...item, rate: nextRate }),
+              });
+            }}
           />
-        </div>
 
-        {/* Print preview */}
-        <div className="rounded-lg border border-dashed border-amber/30 bg-amber/5 px-3 py-1.5 font-mono text-[9.5px] text-amber/90 leading-snug">
-          <span className="text-mute mr-1.5">Print as:</span>
-          {preview}
+          {/* Live Row Calculated Amount */}
+          <div className="flex items-center gap-1.5 ml-auto font-mono text-[11px] bg-coal/80 px-2.5 py-1 rounded-lg border border-line">
+            <span className="text-mute text-[9px] uppercase tracking-wider">Amount:</span>
+            <span className="font-bold text-amber">{inr(rowAmount)}</span>
+          </div>
         </div>
       </div>
     </motion.div>
@@ -124,7 +143,11 @@ function RowCard({
 
 export function ContingencySection({ s, patch }: Props) {
   const items = s.contingency ?? [];
-  const total = items.reduce((a, x) => a + x.amount, 0);
+  const total = items.reduce((a, x) => a + (Number(x.amount) || calcContingencyRowAmount(x)), 0);
+  const totalKms = items.reduce(
+    (a, x) => a + (Number(x.kms) || 0) * (x.isReturn ? 2 : 1),
+    0
+  );
 
   // Modal state
   const [mapTargetRow, setMapTargetRow] = useState<ContingencyRow | null>(null);
@@ -132,16 +155,33 @@ export function ContingencySection({ s, patch }: Props) {
   const add = () => {
     const last = items[items.length - 1];
     const nextDate = last?.date || (s.claimMonth ? s.claimMonth + "-01" : "");
+    const base = {
+      id: uid(),
+      date: nextDate,
+      from: s.distHQ || "KGPW",
+      to: "KGP Station",
+      isReturn: false,
+      kms: 0,
+      rate: 15,
+      amount: 0,
+    };
     patch({
       contingency: [
         ...items,
-        { id: uid(), date: nextDate, from: s.distHQ || "KGPW", to: "KGP Station", isReturn: false, kms: 0, rate: 15, amount: 0 },
+        { ...base, amount: calcContingencyRowAmount(base) },
       ],
     });
   };
 
   const set = (id: string, p: Partial<ContingencyRow>) =>
-    patch({ contingency: items.map((it) => (it.id === id ? { ...it, ...p } : it)) });
+    patch({
+      contingency: items.map((it) => {
+        if (it.id !== id) return it;
+        const updated = { ...it, ...p };
+        updated.amount = calcContingencyRowAmount(updated);
+        return updated;
+      }),
+    });
 
   const del = (id: string) =>
     patch({ contingency: items.filter((it) => it.id !== id) });
@@ -149,7 +189,7 @@ export function ContingencySection({ s, patch }: Props) {
   return (
     <section className="rounded-2xl border border-line bg-coal p-4 md:p-5 space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <SectionHead no="02" title="Contingency Entries" hint="from - to - kms - rate" lamp="#F2A93B" />
+        <SectionHead no="02" title="Contingency Entries" hint="from - to - kms - rate • Live auto-calculated" lamp="#F2A93B" />
         <button
           type="button"
           onClick={add}
@@ -179,12 +219,16 @@ export function ContingencySection({ s, patch }: Props) {
         )}
       </div>
 
-      {total > 0 && (
-        <div className="flex items-center justify-between border-t border-line pt-3 font-mono">
-          <span className="text-[10px] uppercase tracking-[0.18em] text-mute">Total</span>
-          <span className="text-[15px] font-bold text-amber">{inr(total)}</span>
+      {/* Live Auto-Calculated Contingency Total */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3 font-mono bg-ink/30 px-3 py-2 rounded-xl">
+        <div className="text-[10px] uppercase tracking-[0.16em] text-mute">
+          Total Conveyance ({totalKms} KMs • {items.length} Entr{items.length === 1 ? 'y' : 'ies'})
         </div>
-      )}
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] uppercase tracking-wider text-mute">Total Sum:</span>
+          <span className="text-[16px] font-bold text-amber">{inr(total)}</span>
+        </div>
+      </div>
 
       {/* Google Map Distance Modal */}
       {mapTargetRow && (
