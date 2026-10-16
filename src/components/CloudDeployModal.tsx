@@ -386,7 +386,7 @@ service cloud.firestore {
                 <ol className="list-decimal list-inside space-y-2 text-mute text-[11px] leading-relaxed">
                   <li>Push this project folder to your GitHub repository.</li>
                   <li>Go to <a href="https://vercel.com/new" target="_blank" rel="noreferrer" className="text-amber underline inline-flex items-center gap-1">vercel.com/new <ExternalLink className="size-3" /></a> and import your repository.</li>
-                  <li>Under <b>Environment Variables</b>, paste the Firebase credentials.</li>
+                  <li>Under <b>Environment Variables</b>, configure your Firebase credentials (<code className="text-cream">VITE_FIREBASE_*</code>) and Google Maps API Key (<code className="text-cream">VITE_GOOGLE_MAPS_API_KEY</code>).</li>
                   <li>Click <b>Deploy</b>. Your app goes live globally in seconds!</li>
                 </ol>
               </div>

@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowRight, Plus, Trash2 } from "lucide-react";
+import { ArrowRight, Plus, Trash2, Navigation } from "lucide-react";
 import { CalcState, ContingencyRow, inr, particularsText } from "../lib/calc";
 import { IconBtn, SectionHead } from "./primitives";
+import { GoogleMapDistanceModal } from "./GoogleMapDistanceModal";
 
 interface Props {
   s: CalcState;
@@ -14,10 +16,12 @@ function RowCard({
   item,
   onSet,
   onDel,
+  onOpenMap,
 }: {
   item: ContingencyRow;
   onSet: (p: Partial<ContingencyRow>) => void;
   onDel: () => void;
+  onOpenMap: () => void;
 }) {
   const preview = particularsText(item);
   return (
@@ -42,6 +46,7 @@ function RowCard({
             <Trash2 className="size-3.5" />
           </IconBtn>
         </div>
+
         {/* From - To + Return */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-mute w-10 shrink-0">From</span>
@@ -70,29 +75,43 @@ function RowCard({
             </select>
           </div>
         </div>
-        {/* KMs + Rate */}
+
+        {/* KMs + Google Map trigger + Rate */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-mute w-10 shrink-0">KMs</span>
           <input
             type="number"
             min={0}
             step={0.5}
-            className="field py-1 w-24 text-right"
+            className="field py-1 w-20 text-right font-bold text-cream"
             placeholder="0"
             value={item.kms || ""}
             onChange={(e) => onSet({ kms: Math.max(0, parseFloat(e.target.value) || 0) })}
           />
-          <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-mute shrink-0">@ ₹/km</span>
+
+          {/* Google Map KM Button */}
+          <button
+            type="button"
+            onClick={onOpenMap}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber/15 border border-amber/30 text-amber hover:bg-amber/25 font-mono text-[9.5px] font-bold uppercase transition-all cursor-pointer shadow-[0_0_10px_-2px_rgba(242,169,59,0.2)]"
+            title="Calculate distance using Google Maps"
+          >
+            <Navigation className="size-3" />
+            <span>Map KM</span>
+          </button>
+
+          <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-mute shrink-0 ml-1">@ ₹/km</span>
           <input
             type="number"
             min={0}
             step={0.5}
-            className="field py-1 w-24 text-right"
+            className="field py-1 w-20 text-right"
             placeholder="Rate"
             value={item.rate || ""}
             onChange={(e) => onSet({ rate: Math.max(0, parseFloat(e.target.value) || 0) })}
           />
         </div>
+
         {/* Print preview */}
         <div className="rounded-lg border border-dashed border-amber/30 bg-amber/5 px-3 py-1.5 font-mono text-[9.5px] text-amber/90 leading-snug">
           <span className="text-mute mr-1.5">Print as:</span>
@@ -106,18 +125,24 @@ function RowCard({
 export function ContingencySection({ s, patch }: Props) {
   const items = s.contingency ?? [];
   const total = items.reduce((a, x) => a + x.amount, 0);
+
+  // Modal state
+  const [mapTargetRow, setMapTargetRow] = useState<ContingencyRow | null>(null);
+
   const add = () => {
     const last = items[items.length - 1];
     const nextDate = last?.date || (s.claimMonth ? s.claimMonth + "-01" : "");
     patch({
       contingency: [
         ...items,
-        { id: uid(), date: nextDate, from: "", to: "", isReturn: false, kms: 0, rate: 0, amount: 0 },
+        { id: uid(), date: nextDate, from: s.distHQ || "KGPW", to: "KGP Station", isReturn: false, kms: 0, rate: 15, amount: 0 },
       ],
     });
   };
+
   const set = (id: string, p: Partial<ContingencyRow>) =>
     patch({ contingency: items.map((it) => (it.id === id ? { ...it, ...p } : it)) });
+
   const del = (id: string) =>
     patch({ contingency: items.filter((it) => it.id !== id) });
 
@@ -133,6 +158,7 @@ export function ContingencySection({ s, patch }: Props) {
           <Plus className="size-3" strokeWidth={2.8} /> Row
         </button>
       </div>
+
       <div className="space-y-2">
         <AnimatePresence initial={false}>
           {items.map((item) => (
@@ -141,20 +167,38 @@ export function ContingencySection({ s, patch }: Props) {
               item={item}
               onSet={(p) => set(item.id, p)}
               onDel={() => del(item.id)}
+              onOpenMap={() => setMapTargetRow(item)}
             />
           ))}
         </AnimatePresence>
+
         {items.length === 0 && (
           <p className="text-center font-mono text-[10.5px] text-mute border border-dashed border-line rounded-xl py-5">
             No entries yet - click <b className="text-amber">+ Row</b> to add
           </p>
         )}
       </div>
+
       {total > 0 && (
         <div className="flex items-center justify-between border-t border-line pt-3 font-mono">
           <span className="text-[10px] uppercase tracking-[0.18em] text-mute">Total</span>
           <span className="text-[15px] font-bold text-amber">{inr(total)}</span>
         </div>
+      )}
+
+      {/* Google Map Distance Modal */}
+      {mapTargetRow && (
+        <GoogleMapDistanceModal
+          isOpen={true}
+          onClose={() => setMapTargetRow(null)}
+          initialFrom={mapTargetRow.from || s.distHQ || "KGPW"}
+          initialTo={mapTargetRow.to || "KGP Station"}
+          contextTitle={`Contingency: ${mapTargetRow.from || 'Origin'} → ${mapTargetRow.to || 'Destination'}`}
+          onApplyKm={(km) => {
+            set(mapTargetRow.id, { kms: km });
+            setMapTargetRow(null);
+          }}
+        />
       )}
     </section>
   );

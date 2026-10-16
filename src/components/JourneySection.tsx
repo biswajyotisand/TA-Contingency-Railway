@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { MoveRight, Plus, Ticket, Trash2 } from "lucide-react";
+import { MoveRight, Plus, Ticket, Trash2, Navigation, MapPin } from "lucide-react";
 import { CalcState, JourneyGroup, JourneyRow } from "../lib/calc";
 import { IconBtn, Label, MoneyInput, SectionHead } from "./primitives";
+import { GoogleMapDistanceModal } from "./GoogleMapDistanceModal";
 import { cn } from "../utils/cn";
 
 interface Props {
@@ -16,13 +18,15 @@ function RowEditor({
   row,
   onChange,
   onDel,
+  onOpenMap,
 }: {
   row: JourneyRow;
   onChange: (p: Partial<JourneyRow>) => void;
   onDel: () => void;
+  onOpenMap: () => void;
 }) {
   return (
-    <div className="grid grid-cols-[auto_1fr_1fr_1fr_1fr_1fr_auto_auto_auto] gap-1.5 items-center rounded-lg border border-line/70 bg-ink/40 px-2 py-1.5 min-w-[720px]">
+    <div className="grid grid-cols-[auto_1fr_1fr_1fr_1fr_1fr_auto_auto_auto_auto] gap-1.5 items-center rounded-lg border border-line/70 bg-ink/40 px-2 py-1.5 min-w-[780px]">
       {/* Date */}
       <input
         type="date"
@@ -32,7 +36,7 @@ function RowEditor({
       />
       {/* Train no */}
       <input
-        className="field py-1 uppercase text-center"
+        className="field py-1 uppercase text-center font-mono"
         placeholder="Train No."
         value={row.trainNo}
         onChange={(e) => onChange({ trainNo: e.target.value.toUpperCase() })}
@@ -40,7 +44,7 @@ function RowEditor({
       {/* Dep */}
       <input
         type="time"
-        className="field py-1 text-center"
+        className="field py-1 text-center font-mono"
         placeholder="Dep"
         value={row.depTime}
         onChange={(e) => onChange({ depTime: e.target.value })}
@@ -48,34 +52,46 @@ function RowEditor({
       {/* Arr */}
       <input
         type="time"
-        className="field py-1 text-center"
+        className="field py-1 text-center font-mono"
         placeholder="Arr"
         value={row.arrTime}
         onChange={(e) => onChange({ arrTime: e.target.value })}
       />
       {/* From */}
       <input
-        className="field py-1 uppercase text-center"
+        className="field py-1 uppercase text-center font-bold tracking-wider"
         placeholder="From"
         value={row.from}
         onChange={(e) => onChange({ from: e.target.value.toUpperCase() })}
       />
       {/* To */}
       <input
-        className="field py-1 uppercase text-center"
+        className="field py-1 uppercase text-center font-bold tracking-wider"
         placeholder="To"
         value={row.to}
         onChange={(e) => onChange({ to: e.target.value.toUpperCase() })}
       />
-      {/* KMs */}
-      <input
-        type="number"
-        min={0}
-        className="field w-16 py-1 text-right"
-        placeholder="KMs"
-        value={row.kms || ""}
-        onChange={(e) => onChange({ kms: Math.max(0, parseFloat(e.target.value) || 0) })}
-      />
+      {/* KMs + Google Map trigger */}
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          min={0}
+          className="field w-16 py-1 text-right font-mono font-bold text-cream"
+          placeholder="KMs"
+          value={row.kms || ""}
+          onChange={(e) => onChange({ kms: Math.max(0, parseFloat(e.target.value) || 0) })}
+        />
+        <button
+          type="button"
+          onClick={onOpenMap}
+          className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-amber/15 border border-amber/30 text-amber hover:bg-amber/25 font-mono text-[9px] font-bold uppercase transition-all cursor-pointer whitespace-nowrap shadow-[0_0_8px_-2px_rgba(242,169,59,0.2)] active:scale-95"
+          title="Find KM between From and To using Google Maps"
+        >
+          <Navigation className="size-3" />
+          <span>Map KM</span>
+        </button>
+      </div>
+
       {/* Pass toggle */}
       <button
         type="button"
@@ -102,6 +118,9 @@ function RowEditor({
 }
 
 export function JourneySection({ s, patch, patchGroup }: Props) {
+  // Modal state for Google Maps distance lookup
+  const [mapTargetRow, setMapTargetRow] = useState<{ gid: string; row: JourneyRow } | null>(null);
+
   const addGroup = () => patch({ groups: [...s.groups, { id: uid(), object: "", rows: [] }] });
   const delGroup = (gid: string) => patch({ groups: s.groups.filter((g) => g.id !== gid) });
   const patchRow = (gid: string, rid: string, p: Partial<JourneyRow>) =>
@@ -121,7 +140,7 @@ export function JourneySection({ s, patch, patchGroup }: Props) {
   return (
     <section className="rounded-2xl border border-line bg-coal p-4 md:p-5 space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <SectionHead no="02" title="Journeys" hint="one group = one object of journey" lamp="#F2A93B" />
+        <SectionHead no="02" title="Journeys" hint="one group = one object of journey • With Google Map KM finder" lamp="#F2A93B" />
         <button
           type="button"
           onClick={addGroup}
@@ -164,15 +183,16 @@ export function JourneySection({ s, patch, patchGroup }: Props) {
             </div>
 
             {/* Column headers */}
-            <div className="font-mono text-[8.5px] uppercase tracking-[0.14em] text-mute grid grid-cols-[auto_1fr_1fr_1fr_1fr_1fr_auto_auto] gap-1.5 px-1 min-w-[720px]">
+            <div className="font-mono text-[8.5px] uppercase tracking-[0.14em] text-mute grid grid-cols-[auto_1fr_1fr_1fr_1fr_1fr_auto_auto_auto] gap-1.5 px-1 min-w-[780px]">
               <span className="w-32">Date</span>
               <span className="text-center">Train No.</span>
               <span className="text-center">Dep.</span>
               <span className="text-center">Arr.</span>
               <span className="text-center">From</span>
               <span className="text-center">To</span>
-              <span className="text-right w-16">KMs</span>
+              <span className="text-center w-36">KMs & Google Map</span>
               <span className="text-center">Pass/Fare</span>
+              <span className="w-6"></span>
             </div>
 
             {/* Journey rows */}
@@ -190,6 +210,7 @@ export function JourneySection({ s, patch, patchGroup }: Props) {
                       row={row}
                       onChange={(p) => patchRow(g.id, row.id, p)}
                       onDel={() => delRow(g.id, row.id)}
+                      onOpenMap={() => setMapTargetRow({ gid: g.id, row })}
                     />
                   </motion.div>
                 ))}
@@ -217,6 +238,22 @@ export function JourneySection({ s, patch, patchGroup }: Props) {
         <p className="text-center font-mono text-[10.5px] text-mute border border-dashed border-line rounded-xl py-4">
           Add a journey group to get started
         </p>
+      )}
+
+      {/* Google Map Distance Modal */}
+      {mapTargetRow && (
+        <GoogleMapDistanceModal
+          isOpen={true}
+          onClose={() => setMapTargetRow(null)}
+          initialFrom={mapTargetRow.row.from || ""}
+          initialTo={mapTargetRow.row.to || ""}
+          initialMode="TRANSIT"
+          contextTitle={`Journey: ${mapTargetRow.row.from || 'Origin'} → ${mapTargetRow.row.to || 'Destination'}`}
+          onApplyKm={(km) => {
+            patchRow(mapTargetRow.gid, mapTargetRow.row.id, { kms: km });
+            setMapTargetRow(null);
+          }}
+        />
       )}
     </section>
   );

@@ -27,6 +27,7 @@ import { JourneySection } from "./components/JourneySection";
 import { ContingencySection } from "./components/ContingencySection";
 import { Journal } from "./components/Journal";
 import { ContingentBill } from "./components/ContingentBill";
+import { GoogleMapTab } from "./components/GoogleMapTab";
 import { AuthGate } from "./components/AuthGate";
 import { CloudDeployModal } from "./components/CloudDeployModal";
 import { FadeIn, Money, SectionHead } from "./components/primitives";
@@ -450,7 +451,14 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<"journey" | "contingency" | "map">("journey");
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showDeployModal, setShowDeployModal] = useState(false);
+  const [quotaExceeded, setQuotaExceeded] = useState(false);
   const dbConfig = getDatabaseConfig();
+
+  useEffect(() => {
+    const handler = () => setQuotaExceeded(true);
+    window.addEventListener('gmp-quota-exceeded', handler);
+    return () => window.removeEventListener('gmp-quota-exceeded', handler);
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem("ta-junction-session");
@@ -588,6 +596,22 @@ export default function App() {
 
   return (
     <AuthGate onUserChange={setCurrentUser}>
+      {quotaExceeded && (
+        <div className="bg-amber-50 border-b border-amber-200 text-amber-900 px-4 py-2.5 text-xs md:text-sm text-center sticky top-0 z-50 shadow-sm">
+          <span>
+            Google Maps Platform quota reached. If you are the app owner, visit{" "}
+            <a
+              href="https://developers.google.com/maps/ai/ai-studio?utm_campaign=gmp_mcp_codeassist_v1_aistudio#quota_exceeded_errors"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline font-semibold text-amber-950 hover:text-amber-800"
+            >
+              maps developer site
+            </a>{" "}
+            for instructions to update your account.
+          </span>
+        </div>
+      )}
       <div className="min-h-screen bg-ink bg-tracks">
         <div className="bg-fade min-h-screen">
           {/* header */}
@@ -827,44 +851,7 @@ export default function App() {
                       className="space-y-4"
                     >
                       <FadeIn delay={0.08}>
-                        <div className="rounded-2xl border border-line bg-coal p-5 space-y-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <SectionHead
-                              no="03"
-                              title="Route on Google Maps"
-                              hint="auto-detect distance using API"
-                              lamp="#35B26B"
-                            />
-                            <span className="font-mono text-[10px] text-amber uppercase tracking-[0.18em]">
-                              Automated
-                            </span>
-                          </div>
-                          <div className="rounded-xl overflow-hidden border border-line bg-ink aspect-[4/3] relative">
-                            <iframe
-                              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d115705.013419!2d87.5503742!3d22.4235035!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x39f7f35bf9c00001%3A0x62a33b415877cf2e!2sKharagpur%2C%20West%20Bengal!5e0!3m2!1sen!2sin!4v1712000000000"
-                              className="absolute inset-0 size-full"
-                              title="Google Maps"
-                              allowFullScreen
-                              loading="lazy"
-                            />
-                          </div>
-                          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-ink p-3">
-                            <div className="flex items-center gap-2">
-                              <MapIcon className="size-4 text-amber" />
-                              <span className="font-mono text-[10px] text-mute uppercase tracking-[0.18em]">
-                                Auto-calculate distance
-                              </span>
-                            </div>
-                            <a
-                              href={`https://www.google.com/maps/dir/Kharagpur,+West+Bengal/Kharagpur+Workshop,+Kharagpur,+West+Bengal`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-2 rounded-lg bg-amber px-3 py-1.5 font-mono text-[9.5px] font-bold uppercase tracking-wider text-ink transition-all hover:bg-cream active:scale-95"
-                            >
-                              Open in Maps
-                            </a>
-                          </div>
-                        </div>
+                        <GoogleMapTab s={state} patch={patch} patchGroup={patchGroup} />
                       </FadeIn>
                     </motion.div>
                   )}
