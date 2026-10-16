@@ -16,11 +16,13 @@ function RowCard({
   item,
   onSet,
   onDel,
+  onAddAfter,
   onOpenMap,
 }: {
   item: ContingencyRow;
   onSet: (p: Partial<ContingencyRow>) => void;
   onDel: () => void;
+  onAddAfter: () => void;
   onOpenMap: () => void;
 }) {
   const rowAmount = calcContingencyRowAmount(item);
@@ -33,8 +35,8 @@ function RowCard({
       exit={{ opacity: 0, height: 0 }}
       className="overflow-hidden"
     >
-      <div className="rounded-xl border border-line bg-ink/50 px-3 py-3 space-y-2.5">
-        {/* Date */}
+      <div className="rounded-xl border border-line bg-ink/50 px-3.5 py-3 space-y-2.5">
+        {/* Date + Action buttons */}
         <div className="flex items-center gap-2">
           <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-mute w-10 shrink-0">Date</span>
           <input
@@ -43,9 +45,19 @@ function RowCard({
             value={item.date}
             onChange={(e) => onSet({ date: e.target.value })}
           />
-          <IconBtn danger onClick={onDel} title="Remove">
-            <Trash2 className="size-3.5" />
-          </IconBtn>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={onAddAfter}
+              className="size-7 inline-flex items-center justify-center rounded-lg bg-leaf/15 hover:bg-leaf/25 border border-leaf/40 text-leaf transition-all active:scale-95 cursor-pointer shadow-[0_0_8px_-2px_rgba(53,178,107,0.3)]"
+              title="Add row below"
+            >
+              <Plus className="size-3.5" />
+            </button>
+            <IconBtn danger onClick={onDel} title="Remove">
+              <Trash2 className="size-3.5" />
+            </IconBtn>
+          </div>
         </div>
 
         {/* From - To + Return */}
@@ -143,7 +155,7 @@ function RowCard({
 
 export function ContingencySection({ s, patch }: Props) {
   const items = s.contingency ?? [];
-  const total = items.reduce((a, x) => a + (Number(x.amount) || calcContingencyRowAmount(x)), 0);
+  const total = items.reduce((a, x) => a + calcContingencyRowAmount(x), 0);
   const totalKms = items.reduce(
     (a, x) => a + (Number(x.kms) || 0) * (x.isReturn ? 2 : 1),
     0
@@ -173,6 +185,29 @@ export function ContingencySection({ s, patch }: Props) {
     });
   };
 
+  const addAfter = (afterId: string) => {
+    const idx = items.findIndex((it) => it.id === afterId);
+    const target = idx >= 0 ? items[idx] : items[items.length - 1];
+    const newRow: ContingencyRow = {
+      id: uid(),
+      date: target?.date || (s.claimMonth ? `${s.claimMonth}-01` : ""),
+      from: target?.to || s.distHQ || "KGPW",
+      to: target?.from || "KGP Station",
+      isReturn: false,
+      kms: target?.kms || 0,
+      rate: target?.rate || 15,
+      amount: 0,
+    };
+    newRow.amount = calcContingencyRowAmount(newRow);
+    const nextItems = [...items];
+    if (idx >= 0) {
+      nextItems.splice(idx + 1, 0, newRow);
+    } else {
+      nextItems.push(newRow);
+    }
+    patch({ contingency: nextItems });
+  };
+
   const set = (id: string, p: Partial<ContingencyRow>) =>
     patch({
       contingency: items.map((it) => {
@@ -187,7 +222,7 @@ export function ContingencySection({ s, patch }: Props) {
     patch({ contingency: items.filter((it) => it.id !== id) });
 
   return (
-    <section className="rounded-2xl border border-line bg-coal p-4 md:p-5 space-y-4">
+    <section className="rounded-2xl border border-line bg-coal p-4 md:p-5 space-y-4 w-full">
       <div className="flex items-center justify-between gap-3">
         <SectionHead no="02" title="Contingency Entries" hint="from - to - kms - rate • Live auto-calculated" lamp="#F2A93B" />
         <button
@@ -199,7 +234,7 @@ export function ContingencySection({ s, patch }: Props) {
         </button>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         <AnimatePresence initial={false}>
           {items.map((item) => (
             <RowCard
@@ -207,6 +242,7 @@ export function ContingencySection({ s, patch }: Props) {
               item={item}
               onSet={(p) => set(item.id, p)}
               onDel={() => del(item.id)}
+              onAddAfter={() => addAfter(item.id)}
               onOpenMap={() => setMapTargetRow(item)}
             />
           ))}

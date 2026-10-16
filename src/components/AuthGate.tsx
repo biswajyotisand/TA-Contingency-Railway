@@ -19,7 +19,7 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Check for existing session
+  // Check for existing session on mount
   useEffect(() => {
     const saved = localStorage.getItem(SESSION_KEY);
     if (saved) {
@@ -31,7 +31,8 @@ export function AuthGate({ children, onUserChange }: AuthGateProps) {
         // ignore
       }
     }
-  }, [onUserChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const getStoredUsers = (): any[] => {
     try {

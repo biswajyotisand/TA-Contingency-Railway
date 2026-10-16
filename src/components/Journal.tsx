@@ -7,6 +7,7 @@ import {
   fmtDateShort,
   fmtMonthYear,
   inrJ,
+  computeDaEntries,
 } from "../lib/calc";
 import { bandOf } from "../data/rules";
 import { cn } from "../utils/cn";
@@ -341,20 +342,29 @@ export function Journal({ s, c, forPrint = false }: { s: CalcState; c: Computed;
             </tr>
           </thead>
           <tbody>
-            {s.groups.map((grp, gi) => {
-              const bg = gi % 2 === 0 ? "" : "bg-[#fafaf7]";
-              const rowDates = grp.rows.map((r) => r.date).filter(Boolean).sort();
-              if (rowDates.length === 0) return null;
-              const firstDate = rowDates[0];
-              const lastDate = rowDates[rowDates.length - 1];
-              const daMap = new Map<string, DaEntry>();
-              s.daEntries
-                .filter((e) => e.date >= firstDate && e.date <= lastDate)
-                .forEach((e) => {
-                  if (!daMap.has(e.date)) daMap.set(e.date, e);
+            {(() => {
+              const effectiveDaEntries = (s.daEntries && s.daEntries.length > 0)
+                ? s.daEntries
+                : computeDaEntries(s.groups ?? [], daRate, []);
+              return s.groups.map((grp, gi) => {
+                const bg = gi % 2 === 0 ? "" : "bg-[#fafaf7]";
+                const rowDates = grp.rows.map((r) => r.date).filter(Boolean).sort();
+                if (rowDates.length === 0) return null;
+                const firstDate = rowDates[0];
+                const lastDate = rowDates[rowDates.length - 1];
+                const daMap = new Map<string, DaEntry>();
+                effectiveDaEntries
+                  .filter((e) => e.date >= firstDate && e.date <= lastDate)
+                  .forEach((e) => {
+                    if (!daMap.has(e.date)) daMap.set(e.date, e);
+                  });
+                rowDates.forEach((d) => {
+                  if (!daMap.has(d)) {
+                    daMap.set(d, { id: d, date: d, pct: 100, amount: daRate, auto: true });
+                  }
                 });
-              const flat = buildFlatRows(grp, daMap);
-              const totalRows = flat.length;
+                const flat = buildFlatRows(grp, daMap);
+                const totalRows = flat.length;
 
               return (
                 <React.Fragment key={grp.id}>
@@ -432,7 +442,8 @@ export function Journal({ s, c, forPrint = false }: { s: CalcState; c: Computed;
                   })}
                 </React.Fragment>
               );
-            })}
+            });
+            })()}
             {/* Total row */}
             <tr className="bg-[#f0f0f0]">
               <td colSpan={10} className="border border-[#666] px-3 py-[5px] text-center text-[12px] font-bold">

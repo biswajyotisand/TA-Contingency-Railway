@@ -219,14 +219,15 @@ export interface Computed {
 export function compute(s: CalcState): Computed {
   const band = bandOf(s.profile.level);
   const daRate = s.daRateOverride ?? band.da;
-  const daTotal = round2((s.daEntries ?? []).reduce((a, e) => a + (Number(e.amount) || 0), 0));
+  const entries = computeDaEntries(s.groups ?? [], daRate, s.daEntries ?? []);
+  const daTotal = round2(entries.reduce((a, e) => a + (Number(e.amount) || 0), 0));
   const allRows = (s.groups ?? []).flatMap((g) => g.rows ?? []);
   const totalKms = allRows.reduce((a, r) => a + Math.max(0, Number(r.kms) || 0), 0);
   const fareTotal = round2(allRows.filter((r) => !r.onPass).reduce((a, r) => a + Math.max(0, Number(r.fare) || 0), 0));
   const contingTotal = round2(
     (s.contingency ?? []).reduce((a, i) => {
-      const amt = Number(i.amount) > 0 ? Number(i.amount) : calcContingencyRowAmount(i);
-      return a + Math.max(0, amt);
+      const amt = calcContingencyRowAmount(i);
+      return a + Math.max(0, amt > 0 ? amt : (Number(i.amount) || 0));
     }, 0)
   );
   const taGrand = round2(daTotal + fareTotal);

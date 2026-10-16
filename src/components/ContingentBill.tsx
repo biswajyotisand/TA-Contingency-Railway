@@ -1,5 +1,4 @@
-import React from "react";
-import { CalcState, amountInWords, fmtDateShort, fmtMonthYear, particularsText } from "../lib/calc";
+import { CalcState, amountInWords, fmtDateShort, fmtMonthYear, particularsText, calcContingencyRowAmount } from "../lib/calc";
 import { cn } from "../utils/cn";
 
 /* table primitives */
@@ -66,7 +65,11 @@ function fmtAmt(n: number): string {
 
 export function ContingentBill({ s, forPrint = false }: { s: CalcState; forPrint?: boolean }) {
   const items = s.contingency ?? [];
-  const total = items.reduce((a, x) => a + x.amount, 0);
+  const getRowAmt = (r: any) => {
+    const calc = calcContingencyRowAmount(r);
+    return calc > 0 ? calc : (Number(r.amount) || 0);
+  };
+  const total = items.reduce((a, x) => a + getRowAmt(x), 0);
 
   // Group by date for merged date cells
   const dateCount = new Map<string, number>();
@@ -123,7 +126,7 @@ export function ContingentBill({ s, forPrint = false }: { s: CalcState; forPrint
                     <Td center rowSpan={span}>{item.date ? fmtDateShort(item.date) : ""}</Td>
                   )}
                   <Td>{particularsText(item)}</Td>
-                  <Td right>{fmtAmt(item.amount)}</Td>
+                  <Td right>{fmtAmt(getRowAmt(item))}</Td>
                 </tr>
               );
             })}

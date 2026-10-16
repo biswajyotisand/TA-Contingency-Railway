@@ -18,15 +18,17 @@ function RowEditor({
   row,
   onChange,
   onDel,
+  onAddAfter,
   onOpenMap,
 }: {
   row: JourneyRow;
   onChange: (p: Partial<JourneyRow>) => void;
   onDel: () => void;
+  onAddAfter: () => void;
   onOpenMap: () => void;
 }) {
   return (
-    <div className="grid grid-cols-[auto_1fr_1fr_1fr_1fr_1fr_auto_auto_auto_auto] gap-1.5 items-center rounded-lg border border-line/70 bg-ink/40 px-2 py-1.5 min-w-[780px]">
+    <div className="grid grid-cols-[auto_1fr_1fr_1fr_1fr_1fr_auto_auto_auto] gap-2 items-center rounded-lg border border-line/70 bg-ink/40 px-2.5 py-1.5 min-w-[820px]">
       {/* Date */}
       <input
         type="date"
@@ -93,26 +95,40 @@ function RowEditor({
       </div>
 
       {/* Pass toggle */}
-      <button
-        type="button"
-        onClick={() => onChange(row.onPass ? { onPass: false } : { onPass: true, fare: 0 })}
-        className={cn(
-          "h-7 px-2 rounded-md font-mono text-[9px] font-bold border whitespace-nowrap transition-all cursor-pointer",
-          row.onPass ? "border-leaf/40 bg-leaf/10 text-leaf" : "border-amber/40 bg-amber/10 text-amber",
-        )}
-      >
-        {row.onPass ? (
-          <>
-            <Ticket className="size-3 inline mr-0.5" />PASS
-          </>
-        ) : (
-          "FARE"
-        )}
-      </button>
-      {!row.onPass && <MoneyInput className="w-24" value={row.fare} onChange={(n) => onChange({ fare: n })} />}
-      <IconBtn danger onClick={onDel} title="Remove row">
-        <Trash2 className="size-3" />
-      </IconBtn>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => onChange(row.onPass ? { onPass: false } : { onPass: true, fare: 0 })}
+          className={cn(
+            "h-7 px-2 rounded-md font-mono text-[9px] font-bold border whitespace-nowrap transition-all cursor-pointer",
+            row.onPass ? "border-leaf/40 bg-leaf/10 text-leaf" : "border-amber/40 bg-amber/10 text-amber",
+          )}
+        >
+          {row.onPass ? (
+            <>
+              <Ticket className="size-3 inline mr-0.5" />PASS
+            </>
+          ) : (
+            "FARE"
+          )}
+        </button>
+        {!row.onPass && <MoneyInput className="w-20" value={row.fare} onChange={(n) => onChange({ fare: n })} />}
+      </div>
+
+      {/* Actions: Add Row beside Delete Row */}
+      <div className="flex items-center gap-1.5 shrink-0 justify-end">
+        <button
+          type="button"
+          onClick={onAddAfter}
+          className="size-7 inline-flex items-center justify-center rounded-lg bg-leaf/15 hover:bg-leaf/25 border border-leaf/40 text-leaf transition-all active:scale-95 cursor-pointer shadow-[0_0_8px_-2px_rgba(53,178,107,0.3)]"
+          title="Add row below"
+        >
+          <Plus className="size-3.5" />
+        </button>
+        <IconBtn danger onClick={onDel} title="Remove row">
+          <Trash2 className="size-3" />
+        </IconBtn>
+      </div>
     </div>
   );
 }
@@ -133,6 +149,7 @@ export function JourneySection({ s, patch, patchGroup }: Props) {
     patchGroup(gid, {
       rows: s.groups.find((g) => g.id === gid)!.rows.map((r) => (r.id === rid ? { ...r, ...p } : r)),
     });
+
   const addRow = (gid: string) => {
     const grp = s.groups.find((g) => g.id === gid);
     const existingRows = grp?.rows ?? [];
@@ -156,11 +173,39 @@ export function JourneySection({ s, patch, patchGroup }: Props) {
       ],
     });
   };
+
+  const addRowAfter = (gid: string, rid: string) => {
+    const grp = s.groups.find((g) => g.id === gid);
+    if (!grp) return;
+    const existingRows = grp.rows ?? [];
+    const idx = existingRows.findIndex((r) => r.id === rid);
+    const targetRow = idx >= 0 ? existingRows[idx] : existingRows[existingRows.length - 1];
+    const newRow: JourneyRow = {
+      id: uid(),
+      date: targetRow?.date || (s.claimMonth ? `${s.claimMonth}-01` : ""),
+      trainNo: targetRow?.trainNo || "",
+      depTime: "",
+      arrTime: "",
+      from: targetRow?.to || targetRow?.from || s.distHQ || "",
+      to: "",
+      kms: 0,
+      onPass: true,
+      fare: 0,
+    };
+    const nextRows = [...existingRows];
+    if (idx >= 0) {
+      nextRows.splice(idx + 1, 0, newRow);
+    } else {
+      nextRows.push(newRow);
+    }
+    patchGroup(gid, { rows: nextRows });
+  };
+
   const delRow = (gid: string, rid: string) =>
     patchGroup(gid, { rows: s.groups.find((g) => g.id === gid)!.rows.filter((r) => r.id !== rid) });
 
   return (
-    <section className="rounded-2xl border border-line bg-coal p-4 md:p-5 space-y-4">
+    <section className="rounded-2xl border border-line bg-coal p-4 md:p-5 space-y-4 w-full">
       <div className="flex items-center justify-between gap-3">
         <SectionHead no="02" title="Journeys" hint="one group = one object of journey • With Google Map KM finder" lamp="#F2A93B" />
         <button
@@ -205,7 +250,7 @@ export function JourneySection({ s, patch, patchGroup }: Props) {
             </div>
 
             {/* Column headers */}
-            <div className="font-mono text-[8.5px] uppercase tracking-[0.14em] text-mute grid grid-cols-[auto_1fr_1fr_1fr_1fr_1fr_auto_auto_auto] gap-1.5 px-1 min-w-[780px]">
+            <div className="font-mono text-[8.5px] uppercase tracking-[0.14em] text-mute grid grid-cols-[auto_1fr_1fr_1fr_1fr_1fr_auto_auto_auto] gap-2 px-2.5 min-w-[820px]">
               <span className="w-32">Date</span>
               <span className="text-center">Train No.</span>
               <span className="text-center">Dep.</span>
@@ -214,7 +259,7 @@ export function JourneySection({ s, patch, patchGroup }: Props) {
               <span className="text-center">To</span>
               <span className="text-center w-36">KMs & Google Map</span>
               <span className="text-center">Pass/Fare</span>
-              <span className="w-6"></span>
+              <span className="w-16 text-center">Action</span>
             </div>
 
             {/* Journey rows */}
@@ -232,6 +277,7 @@ export function JourneySection({ s, patch, patchGroup }: Props) {
                       row={row}
                       onChange={(p) => patchRow(g.id, row.id, p)}
                       onDel={() => delRow(g.id, row.id)}
+                      onAddAfter={() => addRowAfter(g.id, row.id)}
                       onOpenMap={() => setMapTargetRow({ gid: g.id, row })}
                     />
                   </motion.div>

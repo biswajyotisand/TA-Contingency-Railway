@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Check,
@@ -289,10 +289,13 @@ interface Desk {
   activeId: string;
   bills: BillFile[];
 }
-const STORE_KEY = "ta-junction-desk-v7";
+function getUserStoreKey(hrmsId?: string): string {
+  if (!hrmsId) return "ta-junction-desk-guest";
+  return `ta-junction-desk_${hrmsId.trim().toUpperCase()}`;
+}
 
-function loadDesk(): Desk {
-  const sessionUser = (() => {
+function loadDeskForUser(user?: { name: string; hrmsId: string } | null): Desk {
+  const sessionUser = user || (() => {
     try {
       const saved = localStorage.getItem("ta-junction-session");
       return saved ? JSON.parse(saved) : null;
@@ -301,13 +304,15 @@ function loadDesk(): Desk {
     }
   })();
 
+  const storeKey = getUserStoreKey(sessionUser?.hrmsId);
+
   try {
-    const raw = localStorage.getItem(STORE_KEY);
+    const raw = localStorage.getItem(storeKey);
     if (raw) {
       const s = JSON.parse(raw);
       if (s?.bills?.length)
         return {
-          activeId: s.activeId,
+          activeId: s.activeId || s.bills[0].id,
           bills: s.bills.map((b: BillFile) => {
             const st = normalize(b.state);
             if (sessionUser?.name) {
@@ -462,12 +467,45 @@ function Clock() {
 
 // main App component
 export default function App() {
-  const [desk, setDesk] = useState<Desk>(loadDesk);
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    try {
+      const saved = localStorage.getItem("ta-junction-session");
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [desk, setDesk] = useState<Desk>(() => {
+    try {
+      const saved = localStorage.getItem("ta-junction-session");
+      const user = saved ? JSON.parse(saved) : null;
+      return loadDeskForUser(user);
+    } catch {
+      return loadDeskForUser(null);
+    }
+  });
+
   const [activeTab, setActiveTab] = useState<"journey" | "contingency" | "map">("journey");
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showDeployModal, setShowDeployModal] = useState(false);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
   const dbConfig = getDatabaseConfig();
+
+  const handleUserChange = useCallback((user: User | null) => {
+    setCurrentUser((prev) => {
+      if (prev?.hrmsId === user?.hrmsId && prev?.name === user?.name) return prev;
+      return user;
+    });
+    if (user) {
+      setDesk((prev) => {
+        // If current desk already has bills for this user, keep them
+        if (prev.bills.length > 0 && prev.bills.every((b) => b.state.profile.name === user.name)) {
+          return prev;
+        }
+        return loadDeskForUser(user);
+      });
+    }
+  }, []);
 
   useEffect(() => {
     const handler = () => setQuotaExceeded(true);
@@ -497,13 +535,15 @@ export default function App() {
   const patchProfile = (p: Partial<CalcState["profile"]>) =>
     updateActive((st) => ({ ...st, profile: { ...st.profile, ...p } }));
 
+  // Auto-save to user's dedicated local storage slot
   useEffect(() => {
+    if (!currentUser?.hrmsId) return;
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(desk));
+      localStorage.setItem(getUserStoreKey(currentUser.hrmsId), JSON.stringify(desk));
     } catch {
       // ignore
     }
-  }, [desk]);
+  }, [desk, currentUser?.hrmsId]);
 
   const c = useMemo(() => compute(state), [state]);
   const totals = useMemo(() => {
@@ -514,35 +554,38 @@ export default function App() {
     return m;
   }, [desk, bill.id]);
 
-  // Load remote bills from Firebase on login
+  // Load remote bills from Firebase on login - strictly for this user
   useEffect(() => {
     if (!currentUser?.hrmsId) return;
     let isMounted = true;
     getFirebaseBills(currentUser.hrmsId)
       .then((remoteBills) => {
-        if (!isMounted || !remoteBills || remoteBills.length === 0) return;
-        setDesk((prev) => {
-          const mergedMap = new Map<string, BillFile>();
-          prev.bills.forEach((b) => mergedMap.set(b.id, b));
-          remoteBills.forEach((rb: any) => {
-            if (rb.id && rb.state) {
-              const norm = normalize(rb.state);
-              if (currentUser?.name) {
-                norm.profile.name = currentUser.name;
-              }
-              mergedMap.set(rb.id, {
-                id: rb.id,
-                title: rb.title || makeTitle(norm),
-                state: norm,
-              });
+        if (!isMounted) return;
+        if (remoteBills && remoteBills.length > 0) {
+          const userBills: BillFile[] = remoteBills.map((rb: any) => {
+            const norm = normalize(rb.state);
+            if (currentUser.name) {
+              norm.profile.name = currentUser.name;
             }
+            return {
+              id: rb.id,
+              title: rb.title || makeTitle(norm),
+              state: norm,
+            };
           });
-          const mergedList = Array.from(mergedMap.values());
-          return {
-            activeId: prev.activeId && mergedMap.has(prev.activeId) ? prev.activeId : mergedList[0].id,
-            bills: mergedList,
-          };
-        });
+          setDesk((prev) => {
+            if (
+              prev.bills.length === userBills.length &&
+              userBills.every((ub, i) => prev.bills[i] && prev.bills[i].id === ub.id)
+            ) {
+              return prev;
+            }
+            return {
+              activeId: userBills.some((b) => b.id === prev.activeId) ? prev.activeId : userBills[0].id,
+              bills: userBills,
+            };
+          });
+        }
       })
       .catch(console.warn);
 
@@ -567,24 +610,28 @@ export default function App() {
   // Synchronize employee name across bills whenever registered user is logged in
   useEffect(() => {
     if (!currentUser?.name) return;
-    setDesk((prev) => ({
-      ...prev,
-      bills: prev.bills.map((b) => {
-        if (b.state.profile.name === currentUser.name) return b;
-        const ns = {
-          ...b.state,
-          profile: {
-            ...b.state.profile,
-            name: currentUser.name,
-          },
-        };
-        return {
-          ...b,
-          state: ns,
-          title: makeTitle(ns),
-        };
-      }),
-    }));
+    setDesk((prev) => {
+      const needsSync = prev.bills.some((b) => b.state.profile.name !== currentUser.name);
+      if (!needsSync) return prev;
+      return {
+        ...prev,
+        bills: prev.bills.map((b) => {
+          if (b.state.profile.name === currentUser.name) return b;
+          const ns = {
+            ...b.state,
+            profile: {
+              ...b.state.profile,
+              name: currentUser.name,
+            },
+          };
+          return {
+            ...b,
+            state: ns,
+            title: makeTitle(ns),
+          };
+        }),
+      };
+    });
   }, [currentUser?.name]);
 
   const newBill = () => {
@@ -626,18 +673,24 @@ export default function App() {
     const band = bandOf(state.profile.level);
     const rate = state.daRateOverride ?? band.da;
     const newEntries = computeDaEntries(state.groups, rate, state.daEntries);
+    const currentEntries = state.daEntries ?? [];
     const same =
-      newEntries.length === state.daEntries.length &&
+      newEntries.length === currentEntries.length &&
       newEntries.every((ne, i) => {
-        const oe = state.daEntries[i];
-        return oe && ne.date === oe.date && ne.pct === oe.pct && ne.amount === oe.amount;
+        const oe = currentEntries[i];
+        return (
+          oe &&
+          ne.date === oe.date &&
+          ne.pct === oe.pct &&
+          Math.abs(Number(ne.amount) - Number(oe.amount)) < 0.01
+        );
       });
     if (!same) patch({ daEntries: newEntries });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.groups, state.profile.level, state.daRateOverride]);
 
   return (
-    <AuthGate onUserChange={setCurrentUser}>
+    <AuthGate onUserChange={handleUserChange}>
       {quotaExceeded && (
         <div className="bg-amber-50 border-b border-amber-200 text-amber-900 px-4 py-2.5 text-xs md:text-sm text-center sticky top-0 z-50 shadow-sm">
           <span>
@@ -794,121 +847,130 @@ export default function App() {
               </div>
             </div>
 
-            {/* main grid */}
-            <main className="grid grid-cols-1 lg:grid-cols-12 gap-5 pb-28">
-              {/* LEFT — form panels */}
-              <div className="lg:col-span-5 space-y-5">
-                <FadeIn>
-                  <EmployeeSection
-                    s={state}
-                    patch={patch}
-                    patchProfile={patchProfile}
-                    registeredName={currentUser?.name}
-                  />
-                </FadeIn>
+            {/* main layout: whole window width with preview at the bottom */}
+            <main className="w-full space-y-6 pb-28">
+              {/* Employee & Bill Header */}
+              <FadeIn>
+                <EmployeeSection
+                  s={state}
+                  patch={patch}
+                  patchProfile={patchProfile}
+                  registeredName={currentUser?.name}
+                />
+              </FadeIn>
 
-                <FadeIn delay={0.04}>
-                  <div className="grid grid-cols-3 gap-2 pt-2">
-                    <button
-                      onClick={() => setActiveTab("journey")}
-                      className={cn(
-                        "flex flex-col items-center gap-2 rounded-xl border p-3 transition-all active:scale-95 cursor-pointer",
-                        activeTab === "journey"
-                          ? "bg-amber text-ink border-amber"
-                          : "bg-coal border-line text-mute hover:text-cream",
-                      )}
-                    >
-                      <TrainTrack className="size-5" />
-                      <span className="font-mono text-[9px] font-bold tracking-widest uppercase">Journey</span>
-                    </button>
-                    <button
-                      onClick={() => setActiveTab("contingency")}
-                      className={cn(
-                        "flex flex-col items-center gap-2 rounded-xl border p-3 transition-all active:scale-95 cursor-pointer",
-                        activeTab === "contingency"
-                          ? "bg-amber text-ink border-amber"
-                          : "bg-coal border-line text-mute hover:text-cream",
-                      )}
-                    >
-                      <ReceiptText className="size-5" />
-                      <span className="font-mono text-[9px] font-bold tracking-widest uppercase">Contingency</span>
-                    </button>
-                    <button
-                      onClick={() => setActiveTab("map")}
-                      className={cn(
-                        "flex flex-col items-center gap-2 rounded-xl border p-3 transition-all active:scale-95 cursor-pointer",
-                        activeTab === "map"
-                          ? "bg-amber text-ink border-amber"
-                          : "bg-coal border-line text-mute hover:text-cream",
-                      )}
-                    >
-                      <MapIcon className="size-5" />
-                      <span className="font-mono text-[9px] font-bold tracking-widest uppercase">Google Map</span>
-                    </button>
-                  </div>
-                </FadeIn>
-
-                <AnimatePresence mode="wait">
-                  {activeTab === "journey" && (
-                    <motion.div
-                      key="j"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                    >
-                      <FadeIn delay={0.05}>
-                        <JourneySection s={state} patch={patch} patchGroup={patchGroup} />
-                      </FadeIn>
-                    </motion.div>
-                  )}
-                  {activeTab === "contingency" && (
-                    <motion.div
-                      key="c"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                    >
-                      <FadeIn delay={0.08}>
-                        <ContingencySection s={state} patch={patch} />
-                      </FadeIn>
-                    </motion.div>
-                  )}
-                  {activeTab === "map" && (
-                    <motion.div
-                      key="m"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      className="space-y-4"
-                    >
-                      <FadeIn delay={0.08}>
-                        <GoogleMapTab s={state} patch={patch} patchGroup={patchGroup} />
-                      </FadeIn>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* RIGHT — document preview */}
-              <div className="lg:col-span-7">
-                <FadeIn delay={0.12}>
-                  <div className="flex items-center gap-2 mb-3 font-mono text-[10px] tracking-[0.25em] text-mute">
-                    <FileDown className="size-3.5 text-amber" />
-                    {activeTab === "contingency" ? "CONTINGENT BILL PREVIEW" : "TA JOURNAL PREVIEW"} • PRINT-READY
-                  </div>
-                  <AnimatePresence mode="wait">
-                    {activeTab === "contingency" ? (
-                      <motion.div key="cb" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                        <ContingentBill s={state} />
-                      </motion.div>
-                    ) : (
-                      <motion.div key="tj" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                        <Journal s={state} c={c} />
-                      </motion.div>
+              {/* Tab Selector */}
+              <FadeIn delay={0.04}>
+                <div className="grid grid-cols-3 gap-3">
+                  <button
+                    onClick={() => setActiveTab("journey")}
+                    className={cn(
+                      "flex items-center justify-center gap-2 rounded-xl border p-3.5 transition-all active:scale-95 cursor-pointer font-mono text-[11px] font-bold tracking-wider uppercase",
+                      activeTab === "journey"
+                        ? "bg-amber text-ink border-amber shadow-[0_0_15px_-3px_rgba(242,169,59,0.35)]"
+                        : "bg-coal border-line text-mute hover:text-cream hover:border-mute/40",
                     )}
-                  </AnimatePresence>
+                  >
+                    <TrainTrack className="size-4 shrink-0" />
+                    <span>Journey Table &amp; TA Journal</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("contingency")}
+                    className={cn(
+                      "flex items-center justify-center gap-2 rounded-xl border p-3.5 transition-all active:scale-95 cursor-pointer font-mono text-[11px] font-bold tracking-wider uppercase",
+                      activeTab === "contingency"
+                        ? "bg-amber text-ink border-amber shadow-[0_0_15px_-3px_rgba(242,169,59,0.35)]"
+                        : "bg-coal border-line text-mute hover:text-cream hover:border-mute/40",
+                    )}
+                  >
+                    <ReceiptText className="size-4 shrink-0" />
+                    <span>Contingency Table &amp; Bill</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("map")}
+                    className={cn(
+                      "flex items-center justify-center gap-2 rounded-xl border p-3.5 transition-all active:scale-95 cursor-pointer font-mono text-[11px] font-bold tracking-wider uppercase",
+                      activeTab === "map"
+                        ? "bg-amber text-ink border-amber shadow-[0_0_15px_-3px_rgba(242,169,59,0.35)]"
+                        : "bg-coal border-line text-mute hover:text-cream hover:border-mute/40",
+                    )}
+                  >
+                    <MapIcon className="size-4 shrink-0" />
+                    <span>Google Maps Route KM</span>
+                  </button>
+                </div>
+              </FadeIn>
+
+              {/* TAB 1: JOURNEY & TA JOURNAL PREVIEW */}
+              {activeTab === "journey" && (
+                <div className="space-y-6">
+                  {/* Journey Table across whole window width */}
+                  <FadeIn delay={0.05}>
+                    <JourneySection s={state} patch={patch} patchGroup={patchGroup} />
+                  </FadeIn>
+
+                  {/* TA Journal Preview always visible at bottom of journey */}
+                  <FadeIn delay={0.08}>
+                    <div id="journal-preview" className="space-y-3 pt-2">
+                      <div className="flex items-center justify-between border-b border-line pb-2.5">
+                        <div className="flex items-center gap-2 font-mono text-[11px] font-bold tracking-[0.2em] text-cream">
+                          <FileDown className="size-4 text-amber" />
+                          <span>TA JOURNAL PREVIEW • PRINT-READY</span>
+                        </div>
+                        <button
+                          onClick={() => printWithTitle(buildPrintTitle(state, "journey"))}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-signal hover:bg-signal-deep text-cream font-mono text-[10.5px] font-bold uppercase tracking-wider transition-all cursor-pointer shadow-md active:scale-95"
+                        >
+                          <Printer className="size-3.5" />
+                          <span>Print Journal</span>
+                        </button>
+                      </div>
+                      <div className="w-full overflow-x-auto shadow-2xl rounded-2xl">
+                        <Journal s={state} c={c} />
+                      </div>
+                    </div>
+                  </FadeIn>
+                </div>
+              )}
+
+              {/* TAB 2: CONTINGENCY & BILL PREVIEW */}
+              {activeTab === "contingency" && (
+                <div className="space-y-6">
+                  {/* Contingency Table across whole window width */}
+                  <FadeIn delay={0.05}>
+                    <ContingencySection s={state} patch={patch} />
+                  </FadeIn>
+
+                  {/* Contingent Bill Preview always visible at bottom of contingency */}
+                  <FadeIn delay={0.08}>
+                    <div id="contingent-bill-preview" className="space-y-3 pt-2">
+                      <div className="flex items-center justify-between border-b border-line pb-2.5">
+                        <div className="flex items-center gap-2 font-mono text-[11px] font-bold tracking-[0.2em] text-cream">
+                          <FileDown className="size-4 text-amber" />
+                          <span>CONTINGENT BILL PREVIEW • PRINT-READY</span>
+                        </div>
+                        <button
+                          onClick={() => printWithTitle(buildPrintTitle(state, "contingency"))}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-signal hover:bg-signal-deep text-cream font-mono text-[10.5px] font-bold uppercase tracking-wider transition-all cursor-pointer shadow-md active:scale-95"
+                        >
+                          <Printer className="size-3.5" />
+                          <span>Print Contingency</span>
+                        </button>
+                      </div>
+                      <div className="w-full overflow-x-auto shadow-2xl rounded-2xl">
+                        <ContingentBill s={state} />
+                      </div>
+                    </div>
+                  </FadeIn>
+                </div>
+              )}
+
+              {/* TAB 3: GOOGLE MAPS */}
+              {activeTab === "map" && (
+                <FadeIn delay={0.05}>
+                  <GoogleMapTab s={state} patch={patch} patchGroup={patchGroup} />
                 </FadeIn>
-              </div>
+              )}
             </main>
           </div>
 
