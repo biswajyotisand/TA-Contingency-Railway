@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global safety net: default-deny all unspecified paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidHrmsId(hrmsId) {
+      return hrmsId is string && hrmsId.size() >= 3 && hrmsId.size() <= 32 && hrmsId.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Connection ping test endpoint
+    match /_connection_test/{testId} {
+      allow read: if true;
+    }
+
+    // Railway employee users collection
+    match /users/{hrmsId} {
+      allow get: if isValidHrmsId(hrmsId);
+      allow list: if false; // prevent scraping user directory
+      allow create, update: if isValidHrmsId(hrmsId) 
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 128;
+      allow delete: if false; // prevent accidental user deletion
+
+      // Employee's TA and Contingency Claim Bills
+      match /bills/{billId} {
+        allow read, write: if isValidHrmsId(hrmsId) && isValidId(billId);
+      }
+    }
+  }
+}

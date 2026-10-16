@@ -1,0 +1,6 @@
+{
+  "name": "TA Junction: Railway TA & Contingency Calculator",
+  "description": "Travelling Allowance & Contingency calculator for Railway employees. Daily allowance, hotel ceilings, conveyance and contingency computed per 7th CPC / RBE No. 51/2024.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

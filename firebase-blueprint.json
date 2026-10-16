@@ -1,0 +1,114 @@
+{
+  "entities": {
+    "User": {
+      "title": "Railway Employee User",
+      "description": "Registered railway employee profile indexed by HRMS ID",
+      "type": "object",
+      "properties": {
+        "hrmsId": {
+          "type": "string",
+          "description": "Unique Indian Railways HRMS identification code",
+          "minLength": 3,
+          "maxLength": 32
+        },
+        "name": {
+          "type": "string",
+          "description": "Full name of the railway employee",
+          "minLength": 2,
+          "maxLength": 128
+        },
+        "desig": {
+          "type": "string",
+          "description": "Designation",
+          "maxLength": 128
+        },
+        "dept": {
+          "type": "string",
+          "description": "Department name",
+          "maxLength": 128
+        },
+        "hq": {
+          "type": "string",
+          "description": "Headquarters code",
+          "maxLength": 32
+        },
+        "level": {
+          "type": "string",
+          "description": "7th CPC Pay Matrix Level",
+          "maxLength": 8
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last update timestamp"
+        }
+      },
+      "required": ["hrmsId", "name"]
+    },
+    "ClaimBill": {
+      "title": "TA & Contingency Claim Bill",
+      "description": "Individual monthly Travelling Allowance journal or contingent claim bill",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique claim bill identifier",
+          "maxLength": 64
+        },
+        "hrmsId": {
+          "type": "string",
+          "description": "Owner employee HRMS ID",
+          "maxLength": 32
+        },
+        "title": {
+          "type": "string",
+          "description": "Bill display title",
+          "maxLength": 128
+        },
+        "railway": {
+          "type": "string",
+          "description": "Railway zone name",
+          "maxLength": 64
+        },
+        "distHQ": {
+          "type": "string",
+          "description": "District headquarters",
+          "maxLength": 32
+        },
+        "claimMonth": {
+          "type": "string",
+          "description": "Claim month in YYYY-MM format",
+          "maxLength": 16
+        },
+        "claimNo": {
+          "type": "string",
+          "description": "Official claim number",
+          "maxLength": 64
+        },
+        "billDate": {
+          "type": "string",
+          "description": "Submission date in YYYY-MM-DD format",
+          "maxLength": 16
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last modified timestamp"
+        }
+      },
+      "required": ["id", "hrmsId", "title"]
+    }
+  },
+  "firestore": {
+    "/users/{hrmsId}": {
+      "schema": "User",
+      "description": "Employee directory indexed by HRMS ID"
+    },
+    "/users/{hrmsId}/bills/{billId}": {
+      "schema": "ClaimBill",
+      "description": "User's TA and contingency claim bills"
+    }
+  }
+}
